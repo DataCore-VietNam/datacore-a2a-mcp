@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.datacore-vietnam/datacore-a2a-mcp",
+  "title": "DataCore A2A",
+  "description": "Chuẩn hoá địa chỉ Việt Nam và tra cứu doanh nghiệp theo tên hoặc mã số thuế, qua DataCore A2A.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/DataCore-VietNam/datacore-a2a-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "datacore-a2a-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DATACORE_A2A_URL",
+          "description": "Base URL của DataCore gateway, ví dụ https://gateway.example.com. Phải là gateway — trỏ thẳng orchestrator sẽ luôn bị từ chối 401.",
+          "isRequired": true
+        },
+        {
+          "name": "DATACORE_MANDATE",
+          "description": "AP2 mandate token do DataCore cấp. Quyết định skill nào được gọi và hạn mức chi tiêu.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "DATACORE_SKILLS",
+          "description": "Danh sách skill id cách nhau bằng dấu phẩy để giới hạn tool được expose, hoặc * để lấy tất cả skill mà endpoint trả về. Bỏ trống dùng mặc định.",
+          "isRequired": false
+        },
+        {
+          "name": "DATACORE_TIMEOUT",
+          "description": "Timeout mỗi request, tính bằng giây. Mặc định 30.",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

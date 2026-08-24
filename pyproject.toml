@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+# Tên xác nhận còn trống 2026-08-24 (pypi.org/pypi/datacore-a2a-mcp/json → 404).
+# Tên trên PyPI là vĩnh viễn, không đổi được sau khi đã upload.
+name = "datacore-a2a-mcp"
+dynamic = ["version"]
+description = "MCP server cho các skill dữ liệu DataCore: chuẩn hoá địa chỉ Việt Nam và tra cứu doanh nghiệp"
+readme = "README.md"
+requires-python = ">=3.9"
+
+# Cố ý rỗng. Zero dependency là tính năng, không phải thiếu sót: MCP stdio chỉ
+# là JSON-RPC 2.0 phân cách bằng newline, nên `pip install` không kéo theo gì
+# và cũng không có dependency nào để bị CVE.
+dependencies = []
+
+keywords = ["mcp", "model-context-protocol", "a2a", "vietnam", "address", "company-data"]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Libraries",
+]
+
+# MIT: package này là một wrapper mỏng không chứa business logic, nên điều khoản
+# patent của Apache-2.0 không mua thêm gì đáng kể, và MIT thì ngắn, quen mắt,
+# không làm ai phải đọc kỹ trước khi cài. Đổi sang Apache-2.0 nếu muốn có
+# patent grant tường minh — chỉ cần thay file LICENSE và dòng dưới.
+#
+# Dạng SPDX string này cần hatchling >= 1.27 (PEP 639). Build lỗi ở chỗ này thì
+# đổi về: license = { file = "LICENSE" } và thêm lại classifier
+# "License :: OSI Approved :: MIT License".
+license = "MIT"
+license-files = ["LICENSE"]
+
+[[project.authors]]
+name = "3TIT"
+# ⚠️ Hộp thư này phải tồn tại thật trước khi publish — PyPI và registry đều hiện
+# nó ra, và đây là đường người ta báo lỗi bảo mật. Alias vào đâu cũng được.
+email = "mcp-security@datacore.vn"
+
+[project.scripts]
+datacore-mcp = "datacore_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/DataCore-VietNam/datacore-a2a-mcp"
+Documentation = "https://github.com/DataCore-VietNam/datacore-a2a-mcp#readme"
+# PRIVACY.md trong repo, không phải một trang riêng — đủ cho Anthropic và không
+# thêm một chỗ nữa để quên cập nhật. Phần nói về package đã đầy đủ; phần nói về
+# dịch vụ DataCore còn một khối TODO phải điền trước khi submit Anthropic.
+"Privacy Policy" = "https://github.com/DataCore-VietNam/datacore-a2a-mcp/blob/master/PRIVACY.md"
+Issues = "https://github.com/DataCore-VietNam/datacore-a2a-mcp/issues"
+
+[tool.hatch.version]
+path = "src/datacore_mcp/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/datacore_mcp"]
+
+[tool.hatch.build.targets.sdist]
+# sdist mà PyPI phát ra chứa đúng những gì liệt kê ở đây. Giữ danh sách hẹp:
+# mọi file lọt vào đây là file công khai.
+#
+# PRIVACY.md có trong danh sách vì người chỉ tải sdist vẫn phải đọc được nó.
+# Runbook phát hành cố ý không nằm trong repo này — nó là tài liệu nội bộ, không
+# phải tài liệu cho người dùng package.
+include = ["src/datacore_mcp", "README.md", "PRIVACY.md", "pyproject.toml"]

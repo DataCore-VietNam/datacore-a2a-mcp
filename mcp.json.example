@@ -1,0 +1,17 @@
+{
+  "//": "Copy thành .mcp.json ở project root để Claude Code tự nạp server này.",
+  "//_1": "Cố ý KHÔNG commit sẵn thành .mcp.json — nó sẽ tự đăng ký cho mọi",
+  "//_2": "người mở repo này, kể cả khi họ không muốn.",
+  "//_3": "DATACORE_MANDATE là secret. Đừng commit file đã điền token thật;",
+  "//_4": "nếu client hỗ trợ, đọc nó từ trình quản lý secret thay vì để inline.",
+  "mcpServers": {
+    "datacore-a2a": {
+      "command": "datacore-mcp",
+      "env": {
+        "DATACORE_A2A_URL": "https://api.example.com",
+        "DATACORE_MANDATE": "<mandate-token>",
+        "DATACORE_TIMEOUT": "30"
+      }
+    }
+  }
+}
