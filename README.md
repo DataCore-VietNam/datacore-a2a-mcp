@@ -1,6 +1,10 @@
 # DataCore A2A — MCP server
 
-<!-- mcp-name: io.github.datacore-vietnam/datacore-a2a-mcp -->
+<!-- mcp-name: vn.datacore/datacore-a2a -->
+<!-- Marker dự phòng: registry tìm chuỗi con, nên hai dòng cùng tồn tại được.
+     Giữ đường lùi nếu xác minh tên miền không xong, khỏi phải phát hành
+     một version mới chỉ để sửa một dòng comment.
+     mcp-name: io.github.nambn3tit/datacore-a2a-mcp -->
 
 Cho phép một MCP client (Claude Code, Claude Desktop, VS Code, Cursor…) dùng
 các skill dữ liệu của DataCore như tool native: chuẩn hoá địa chỉ Việt Nam,
