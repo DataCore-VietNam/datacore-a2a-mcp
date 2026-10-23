@@ -21,6 +21,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -81,11 +82,17 @@ def load_config():
         "base URL của endpoint DataCore",
         "https://api.example.com",
     ).rstrip("/")
-    mandate = _require(
-        "DATACORE_MANDATE",
-        "AP2 mandate token do DataCore cấp",
-        "<jws-token>",
-    )
+    # Hai cách xác thực. API key là đường chính: nó không hết hạn theo giờ, và
+    # mandate do chính server này xin rồi tự gia hạn — người dùng không bao giờ
+    # phải sửa file config vì token hết hạn.
+    api_key = os.environ.get("DATACORE_API_KEY", "").strip()
+    mandate = os.environ.get("DATACORE_MANDATE", "").strip()
+    if not api_key and not mandate:
+        log("THIẾU xác thực: cần DATACORE_API_KEY (khuyến nghị) hoặc DATACORE_MANDATE.")
+        log("  DATACORE_API_KEY=dck_...   lấy ở trang quản lý credential")
+        log("  DATACORE_MANDATE=<jws>     mandate phát tay, sẽ hết hạn và không tự gia hạn")
+        log("  xem README để biết cách lấy credential.")
+        sys.exit(2)
 
     raw_skills = os.environ.get("DATACORE_SKILLS", "").strip()
     if raw_skills == "*":
@@ -96,10 +103,17 @@ def load_config():
         skills = DEFAULT_SKILLS
 
     timeout = float(os.environ.get("DATACORE_TIMEOUT", "30"))
-    return base_url, mandate, skills, timeout
+    return base_url, api_key, mandate, skills, timeout
 
 
-BASE_URL, MANDATE, SKILL_FILTER, TIMEOUT = "", "", DEFAULT_SKILLS, 30.0
+BASE_URL, API_KEY, MANDATE, SKILL_FILTER, TIMEOUT = "", "", "", DEFAULT_SKILLS, 30.0
+
+#: Mandate đang giữ và thời điểm hết hạn (epoch giây). Chỉ ở trong RAM — không
+#: ghi ra đĩa, không vào log, không bao giờ để người dùng nhìn thấy.
+_mandate_cache = {"token": None, "expires_at": 0}
+
+#: Xin lại khi còn dưới ngần này giây, để không request nào rơi đúng khe hết hạn.
+_REFRESH_MARGIN_SECONDS = 60
 
 
 # ------------------------------------------------------------------ HTTP
@@ -149,14 +163,67 @@ def _error_detail(exc):
     return body[:300]
 
 
-def http_json(path, payload=None):
+def _request_mandate():
+    """
+    Đổi API key lấy mandate ngắn hạn.
+
+    Tách riêng khỏi ``current_mandate`` để chỗ gọi mạng là một hàm duy nhất,
+    thay được khi cần chạy thử mà không đụng tới logic cache.
+    """
+    req = urllib.request.Request(
+        f"{BASE_URL}/mandate/issue",
+        data=b"",
+        headers={"Accept": "application/json", "Authorization": f"Bearer {API_KEY}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        raise A2AError(e.code, _error_detail(e)) from None
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"không xin được mandate từ {BASE_URL}: {e.reason}") from None
+
+
+def current_mandate(now=None, force=False):
+    """
+    Mandate còn hiệu lực để gắn vào header.
+
+    ``DATACORE_MANDATE`` dán tay được ưu tiên và không bao giờ gia hạn — đó là
+    đường tương thích ngược cho người đã cấu hình theo cách cũ.
+    """
+    if MANDATE:
+        return MANDATE
+
+    at = time.time() if now is None else now
+    cached = _mandate_cache["token"]
+    if cached and not force and _mandate_cache["expires_at"] - at > _REFRESH_MARGIN_SECONDS:
+        return cached
+
+    body = _request_mandate()
+    token = (body or {}).get("mandate")
+    if not token:
+        raise RuntimeError("issuer trả về response không có trường 'mandate'")
+
+    _mandate_cache["token"] = token
+    _mandate_cache["expires_at"] = at + float(body.get("expires_in", 900))
+    # Ghi thời hạn, KHÔNG ghi mandate — kể cả một phần.
+    log(f"mandate mới, hiệu lực {body.get('expires_in', 900)}s")
+    return token
+
+
+def http_json(path, payload=None, _retried=False):
     """
     Một chỗ duy nhất gắn ``X-AP2-Mandate``. Token đi cả trên discovery lẫn
     invoke, vì cả hai đều là request được authorize — discovery không mang
     mandate cũng bị từ chối 401.
+
+    Gặp 401 thì xin mandate mới đúng MỘT lần rồi thử lại: mandate có thể vừa
+    hết hạn giữa chừng. Vẫn 401 sau khi làm mới nghĩa là credential hỏng thật,
+    và khi đó phải báo lỗi cho người dùng thay vì quay vòng.
     """
     data = json.dumps(payload).encode() if payload is not None else None
-    headers = {"Accept": "application/json", "X-AP2-Mandate": MANDATE}
+    headers = {"Accept": "application/json", "X-AP2-Mandate": current_mandate()}
     if data is not None:
         headers["Content-Type"] = "application/json"
 
@@ -170,6 +237,10 @@ def http_json(path, payload=None):
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
+        if e.code == 401 and API_KEY and not _retried:
+            log("bị từ chối 401, xin mandate mới rồi thử lại")
+            current_mandate(force=True)
+            return http_json(path, payload, _retried=True)
         raise A2AError(e.code, _error_detail(e)) from None
     except urllib.error.URLError as e:
         raise RuntimeError(f"không kết nối được tới {BASE_URL}: {e.reason}") from None
@@ -369,13 +440,15 @@ def serve():
 
 
 def main():
-    global BASE_URL, MANDATE, SKILL_FILTER, TIMEOUT
-    BASE_URL, MANDATE, SKILL_FILTER, TIMEOUT = load_config()
+    global BASE_URL, API_KEY, MANDATE, SKILL_FILTER, TIMEOUT
+    BASE_URL, API_KEY, MANDATE, SKILL_FILTER, TIMEOUT = load_config()
 
-    # Không log MANDATE, kể cả một phần của nó: đây là token cấp quyền chi
+    # Không log API_KEY lẫn MANDATE, kể cả một phần: cả hai đều cấp quyền chi
     # tiêu, và stderr của MCP server thường được client ghi ra file log.
+    auth_mode = "api-key (tự gia hạn)" if API_KEY else "mandate tĩnh"
     scope = "tất cả skill của endpoint" if SKILL_FILTER is None else ", ".join(SKILL_FILTER)
-    log(f"start v{__version__} | base={BASE_URL} | timeout={TIMEOUT}s | skill={scope}")
+    log(f"start v{__version__} | base={BASE_URL} | auth={auth_mode} | "
+        f"timeout={TIMEOUT}s | skill={scope}")
 
     try:
         serve()
