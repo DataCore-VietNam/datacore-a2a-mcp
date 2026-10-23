@@ -114,6 +114,12 @@ DataCore verify, và không tự khai bất kỳ header authorization nào khác
 client không được là nơi tự cấp quyền cho chính nó — nó chỉ chuyển tiếp thứ nó
 được cấp, còn mọi quyết định cho phép hay từ chối đều nằm ở phía DataCore.
 
+API key đi trong `X-Datacore-Credential` khi đổi lấy mandate, **không phải**
+`Authorization`. Gateway của DataCore dành riêng `Authorization` cho chính nó —
+nó tự ký và tự chèn header đó sau khi xác thực người gọi — nên request nào gửi
+sẵn `Authorization` bị trả 409 với body rỗng. Nếu bạn gọi `/mandate/issue`
+bằng tay và nhận 409 không có thông báo gì, đó là lý do.
+
 **API key** là bearer credential: ai giữ nó cũng đổi được ra mandate, và từ đó
 gọi được đúng những skill trong đó tới hết hạn mức. Giữ nó như giữ mật khẩu —
 đừng commit `.mcp.json` đã điền key, và nếu client của bạn hỗ trợ, đọc nó từ

@@ -115,6 +115,12 @@ _mandate_cache = {"token": None, "expires_at": 0}
 #: Xin lại khi còn dưới ngần này giây, để không request nào rơi đúng khe hết hạn.
 _REFRESH_MARGIN_SECONDS = 60
 
+#: Header mang credential khi đổi lấy mandate. Gateway DataCore dành riêng
+#: ``Authorization`` cho chính nó — nó tự ký và tự chèn header đó sau khi xác
+#: thực người gọi — nên request nào gửi sẵn ``Authorization`` bị từ chối 409
+#: với body rỗng, trước cả khi tới được endpoint.
+CREDENTIAL_HEADER = "X-Datacore-Credential"
+
 
 # ------------------------------------------------------------------ HTTP
 
@@ -169,11 +175,16 @@ def _request_mandate():
 
     Tách riêng khỏi ``current_mandate`` để chỗ gọi mạng là một hàm duy nhất,
     thay được khi cần chạy thử mà không đụng tới logic cache.
+
+    Key đi trong ``X-Datacore-Credential``, KHÔNG phải ``Authorization``.
+    Gateway của DataCore coi ``Authorization`` là header riêng của nó — nó tự ký
+    và tự chèn sau khi xác thực — nên request nào mang sẵn header đó bị trả
+    409 với body rỗng, trước cả khi tới được route này.
     """
     req = urllib.request.Request(
         f"{BASE_URL}/mandate/issue",
         data=b"",
-        headers={"Accept": "application/json", "Authorization": f"Bearer {API_KEY}"},
+        headers={"Accept": "application/json", CREDENTIAL_HEADER: API_KEY},
         method="POST",
     )
     try:

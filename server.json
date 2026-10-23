@@ -3,7 +3,7 @@
   "name": "vn.datacore/datacore-a2a",
   "title": "DataCore A2A",
   "description": "Chuẩn hoá địa chỉ Việt Nam và tra cứu doanh nghiệp theo tên hoặc mã số thuế, qua DataCore A2A.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "repository": {
     "url": "https://github.com/DataCore-VietNam/datacore-a2a-mcp",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "datacore-a2a-mcp",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "transport": {
         "type": "stdio"
       },
