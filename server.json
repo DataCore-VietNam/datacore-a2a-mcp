@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "vn.datacore/datacore-a2a",
   "title": "DataCore A2A",
-  "description": "Chuẩn hoá địa chỉ Việt Nam và tra cứu doanh nghiệp theo tên hoặc mã số thuế, qua DataCore A2A.",
+  "description": "Normalise Vietnamese addresses and look up companies by name or tax code, through DataCore A2A.",
   "version": "0.2.1",
   "repository": {
     "url": "https://github.com/DataCore-VietNam/datacore-a2a-mcp",
@@ -19,29 +19,29 @@
       "environmentVariables": [
         {
           "name": "DATACORE_A2A_URL",
-          "description": "Base URL của DataCore gateway, ví dụ https://gateway.example.com. Phải là gateway — trỏ thẳng orchestrator sẽ luôn bị từ chối 401.",
+          "description": "Base URL of the DataCore gateway, for example https://gateway.datacore.vn. It must be the gateway — pointing straight at the orchestrator is always rejected with 401.",
           "isRequired": true
         },
         {
           "name": "DATACORE_API_KEY",
-          "description": "Credential dài hạn dạng dck_... lấy ở trang quản lý credential của DataCore. Server tự đổi nó lấy mandate ngắn hạn và tự gia hạn, nên không phải thay khi hết hạn. Cần biến này HOẶC DATACORE_MANDATE.",
+          "description": "Long-lived credential shaped dck_..., created with POST /mcp/credentials — see the README. The server exchanges it for short-lived mandates and refreshes them itself, so it never has to be replaced on expiry. Either this or DATACORE_MANDATE is required.",
           "isRequired": false,
           "isSecret": true
         },
         {
           "name": "DATACORE_MANDATE",
-          "description": "AP2 mandate phát tay, cách cũ. Không tự gia hạn: hết hạn là phải thay rồi khởi động lại. Chỉ dùng nếu bạn được cấp theo cách này; nếu không, dùng DATACORE_API_KEY.",
+          "description": "A hand-issued AP2 mandate, the older way. Not refreshed: when it expires you replace it and restart. Use it only if you were set up this way; otherwise use DATACORE_API_KEY.",
           "isRequired": false,
           "isSecret": true
         },
         {
           "name": "DATACORE_SKILLS",
-          "description": "Danh sách skill id cách nhau bằng dấu phẩy để giới hạn tool được expose, hoặc * để lấy tất cả skill mà endpoint trả về. Bỏ trống dùng mặc định.",
+          "description": "Comma-separated skill ids to narrow the tools that get exposed, or * for every skill the endpoint returns. Empty uses the default four.",
           "isRequired": false
         },
         {
           "name": "DATACORE_TIMEOUT",
-          "description": "Timeout mỗi request, tính bằng giây. Mặc định 30.",
+          "description": "Per-request timeout in seconds. Defaults to 30.",
           "isRequired": false
         }
       ]

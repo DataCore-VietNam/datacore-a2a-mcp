@@ -69,9 +69,9 @@ def _require(name, what, example):
     """
     value = os.environ.get(name, "").strip()
     if not value:
-        log(f"THIẾU biến môi trường bắt buộc {name} ({what}).")
-        log(f"  ví dụ: {name}={example}")
-        log("  xem README để biết cách lấy mandate và URL endpoint.")
+        log(f"MISSING required environment variable {name} ({what}).")
+        log(f"  example: {name}={example}")
+        log("  see the README for how to get a credential and the endpoint URL.")
         sys.exit(2)
     return value
 
@@ -79,8 +79,8 @@ def _require(name, what, example):
 def load_config():
     base_url = _require(
         "DATACORE_A2A_URL",
-        "base URL của endpoint DataCore",
-        "https://api.example.com",
+        "base URL of the DataCore gateway",
+        "https://gateway.datacore.vn",
     ).rstrip("/")
     # Hai cách xác thực. API key là đường chính: nó không hết hạn theo giờ, và
     # mandate do chính server này xin rồi tự gia hạn — người dùng không bao giờ
@@ -88,10 +88,10 @@ def load_config():
     api_key = os.environ.get("DATACORE_API_KEY", "").strip()
     mandate = os.environ.get("DATACORE_MANDATE", "").strip()
     if not api_key and not mandate:
-        log("THIẾU xác thực: cần DATACORE_API_KEY (khuyến nghị) hoặc DATACORE_MANDATE.")
-        log("  DATACORE_API_KEY=dck_...   lấy ở trang quản lý credential")
-        log("  DATACORE_MANDATE=<jws>     mandate phát tay, sẽ hết hạn và không tự gia hạn")
-        log("  xem README để biết cách lấy credential.")
+        log("MISSING authentication: set DATACORE_API_KEY (recommended) or DATACORE_MANDATE.")
+        log("  DATACORE_API_KEY=dck_...   create one with POST /mcp/credentials, see the README")
+        log("  DATACORE_MANDATE=<jws>     hand-issued mandate; it expires and is not refreshed")
+        log("  see the README for how to get a credential.")
         sys.exit(2)
 
     raw_skills = os.environ.get("DATACORE_SKILLS", "").strip()
@@ -137,16 +137,17 @@ class A2AError(Exception):
 #: Mã status DataCore trả về, dịch sang câu người đọc hiểu được thay vì để
 #: client tự đoán ý nghĩa của một con số như 402.
 _STATUS_HINT = {
-    400: "request không hợp lệ, hoặc skill chưa được đăng ký",
+    400: "malformed request, or the skill is not registered at this endpoint",
     401: (
-        "mandate thiếu hoặc không hợp lệ. Kiểm tra DATACORE_MANDATE còn hạn, và "
-        "kiểm tra DATACORE_A2A_URL đúng là endpoint DataCore đã được cấp"
+        "mandate missing or invalid. On DATACORE_MANDATE, check it has not expired; "
+        "on DATACORE_API_KEY, check the credential is still active and that "
+        "DATACORE_A2A_URL is the endpoint that issued it"
     ),
-    402: "vượt spend cap của mandate — cần mandate mới hoặc cap cao hơn",
-    403: "skill nằm ngoài allowlist của mandate",
-    404: "không tìm thấy route — kiểm tra lại DATACORE_A2A_URL",
-    502: "backend của skill này không phản hồi",
-    503: "dịch vụ tạm thời không khả dụng",
+    402: "past the mandate's spend cap — this month's quota is spent",
+    403: "skill outside the mandate's allowlist",
+    404: "no such route — check DATACORE_A2A_URL",
+    502: "the backend behind this skill is not answering",
+    503: "the service is temporarily unavailable",
 }
 
 
@@ -159,11 +160,11 @@ def _error_detail(exc):
     try:
         body = exc.read().decode("utf-8", "replace")
     except Exception:
-        return exc.reason or "không có chi tiết"
+        return exc.reason or "no detail"
     try:
         parsed = json.loads(body)
     except ValueError:
-        return (body[:300] or exc.reason or "không có chi tiết").strip()
+        return (body[:300] or exc.reason or "no detail").strip()
     if isinstance(parsed, dict):
         return parsed.get("error") or parsed.get("message") or json.dumps(parsed)[:300]
     return body[:300]
@@ -193,7 +194,7 @@ def _request_mandate():
     except urllib.error.HTTPError as e:
         raise A2AError(e.code, _error_detail(e)) from None
     except urllib.error.URLError as e:
-        raise RuntimeError(f"không xin được mandate từ {BASE_URL}: {e.reason}") from None
+        raise RuntimeError(f"could not obtain a mandate from {BASE_URL}: {e.reason}") from None
 
 
 def current_mandate(now=None, force=False):
@@ -214,12 +215,12 @@ def current_mandate(now=None, force=False):
     body = _request_mandate()
     token = (body or {}).get("mandate")
     if not token:
-        raise RuntimeError("issuer trả về response không có trường 'mandate'")
+        raise RuntimeError("issuer returned a response with no 'mandate' field")
 
     _mandate_cache["token"] = token
     _mandate_cache["expires_at"] = at + float(body.get("expires_in", 900))
     # Ghi thời hạn, KHÔNG ghi mandate — kể cả một phần.
-    log(f"mandate mới, hiệu lực {body.get('expires_in', 900)}s")
+    log(f"new mandate, valid for {body.get('expires_in', 900)}s")
     return token
 
 
@@ -249,12 +250,12 @@ def http_json(path, payload=None, _retried=False):
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         if e.code == 401 and API_KEY and not _retried:
-            log("bị từ chối 401, xin mandate mới rồi thử lại")
+            log("rejected with 401, requesting a new mandate and retrying once")
             current_mandate(force=True)
             return http_json(path, payload, _retried=True)
         raise A2AError(e.code, _error_detail(e)) from None
     except urllib.error.URLError as e:
-        raise RuntimeError(f"không kết nối được tới {BASE_URL}: {e.reason}") from None
+        raise RuntimeError(f"could not reach {BASE_URL}: {e.reason}") from None
 
 
 # ------------------------------------------------------------------ discovery
@@ -275,7 +276,7 @@ def discover_tools():
     """
     entries = http_json("/orchestrate/skills")
     if not isinstance(entries, list):
-        raise RuntimeError(f"/orchestrate/skills trả về {type(entries).__name__}, cần một list")
+        raise RuntimeError(f"/orchestrate/skills returned {type(entries).__name__}, expected a list")
 
     _skill_by_tool_name.clear()
     tools = []
@@ -298,11 +299,11 @@ def discover_tools():
         description = entry.get("description") or f"DataCore skill {skill_id}"
         examples = entry.get("examples") or []
         if examples:
-            description += "\n\nVí dụ input: " + "; ".join(str(e) for e in examples[:3])
+            description += "\n\nExample input: " + "; ".join(str(e) for e in examples[:3])
         if entry.get("available") is False:
             description += (
-                "\n\n(Agent giữ skill này đang không phản hồi. Skill id vẫn đúng "
-                "và gọi được khi agent trở lại.)"
+                "\n\n(The agent that owns this skill is not responding. The skill "
+                "id is still correct and will work once it is back.)"
             )
 
         tools.append({
@@ -324,7 +325,7 @@ def discover_tools():
                 "properties": {
                     "text": {
                         "type": "string",
-                        "description": "Input dạng free-text gửi cho skill.",
+                        "description": "Free-text input to send to the skill.",
                     }
                 },
                 "required": ["text"],
@@ -332,9 +333,9 @@ def discover_tools():
             },
         })
 
-    log(f"{len(tools)} tool từ {BASE_URL}: {sorted(_skill_by_tool_name.values())}")
+    log(f"{len(tools)} tools from {BASE_URL}: {sorted(_skill_by_tool_name.values())}")
     if skipped:
-        log(f"bỏ qua {len(skipped)} skill ngoài DATACORE_SKILLS: {sorted(skipped)}")
+        log(f"skipped {len(skipped)} skills outside DATACORE_SKILLS: {sorted(skipped)}")
     return tools
 
 
@@ -345,7 +346,7 @@ def call_skill(skill_id, text):
     payload = (body or {}).get("payload")
     state = (body or {}).get("state")
     if not payload:
-        raise RuntimeError(f"DataCore trả state={state} nhưng không có payload")
+        raise RuntimeError(f"DataCore returned state={state} with no payload")
     return payload
 
 
@@ -355,7 +356,7 @@ def call_skill(skill_id, text):
 def _tool_error(exc):
     """Câu lỗi cho Claude đọc: mã status → nguyên nhân, kèm chi tiết của server."""
     if isinstance(exc, A2AError):
-        hint = _STATUS_HINT.get(exc.status, "lỗi từ DataCore")
+        hint = _STATUS_HINT.get(exc.status, "error from DataCore")
         return f"{hint} (HTTP {exc.status}): {exc.detail}"
     return str(exc)
 
@@ -384,7 +385,7 @@ def handle(method, params):
         except Exception as e:
             # Không với tới endpoint được là lỗi cấu hình, không phải lỗi
             # protocol — trả error để client hiện lý do thật.
-            return None, {"code": -32603, "message": f"Discovery thất bại: {_tool_error(e)}"}
+            return None, {"code": -32603, "message": f"Discovery failed: {_tool_error(e)}"}
 
     if method == "tools/call":
         name = params.get("name")
@@ -395,13 +396,13 @@ def handle(method, params):
             try:
                 discover_tools()
             except Exception as e:
-                return None, {"code": -32603, "message": f"Discovery thất bại: {_tool_error(e)}"}
+                return None, {"code": -32603, "message": f"Discovery failed: {_tool_error(e)}"}
 
         skill_id = _skill_by_tool_name.get(name)
         if not skill_id:
-            return None, {"code": -32602, "message": f"Tool không tồn tại: {name}"}
+            return None, {"code": -32602, "message": f"No such tool: {name}"}
         if not isinstance(text, str) or not text.strip():
-            return None, {"code": -32602, "message": "Thiếu tham số 'text'"}
+            return None, {"code": -32602, "message": "Missing 'text' argument"}
 
         try:
             return {"content": [{"type": "text", "text": call_skill(skill_id, text)}]}, None
@@ -409,10 +410,10 @@ def handle(method, params):
             # isError=true để Claude thấy tool thất bại và tự điều chỉnh, thay
             # vì tưởng chuỗi lỗi là kết quả hợp lệ.
             message = _tool_error(e)
-            log(f"tool {name} lỗi: {message}")
+            log(f"tool {name} failed: {message}")
             return {"content": [{"type": "text", "text": message}], "isError": True}, None
 
-    return None, {"code": -32601, "message": f"Method không hỗ trợ: {method}"}
+    return None, {"code": -32601, "message": f"Unsupported method: {method}"}
 
 
 def serve():
@@ -423,7 +424,7 @@ def serve():
         try:
             request = json.loads(line)
         except json.JSONDecodeError as e:
-            log(f"bỏ qua dòng không phải JSON: {e}")
+            log(f"skipping a line that is not JSON: {e}")
             continue
 
         req_id = request.get("id")
@@ -438,7 +439,7 @@ def serve():
         try:
             result, error = handle(method, request.get("params") or {})
         except Exception as e:
-            result, error = None, {"code": -32603, "message": f"Lỗi nội bộ: {e}"}
+            result, error = None, {"code": -32603, "message": f"Internal error: {e}"}
 
         response = {"jsonrpc": "2.0", "id": req_id}
         if error:
@@ -456,10 +457,10 @@ def main():
 
     # Không log API_KEY lẫn MANDATE, kể cả một phần: cả hai đều cấp quyền chi
     # tiêu, và stderr của MCP server thường được client ghi ra file log.
-    auth_mode = "api-key (tự gia hạn)" if API_KEY else "mandate tĩnh"
-    scope = "tất cả skill của endpoint" if SKILL_FILTER is None else ", ".join(SKILL_FILTER)
+    auth_mode = "api-key (self-refreshing)" if API_KEY else "static mandate"
+    scope = "every skill the endpoint offers" if SKILL_FILTER is None else ", ".join(SKILL_FILTER)
     log(f"start v{__version__} | base={BASE_URL} | auth={auth_mode} | "
-        f"timeout={TIMEOUT}s | skill={scope}")
+        f"timeout={TIMEOUT}s | skills={scope}")
 
     try:
         serve()

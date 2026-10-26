@@ -1,0 +1,123 @@
+# Pre-release checks for a PACKAGE, not a service.
+#
+# These three checks exist because of one property of PyPI: you cannot upload
+# over a version that already exists. Anything wrong that is discovered after an
+# upload costs a version number to fix — including a single comment line in the
+# README, because the README ships inside the artifact.
+#
+# So each job below guards something whose failure is only visible AFTER the
+# upload, when it is already too late. None of them needs a secret, which is why
+# they can run on pull requests from forks.
+#
+# Publishing itself is not here. It lives in GitLab CI, behind a manual button,
+# on the repository that holds the real history.
+
+name: verify
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # The server name on the MCP Registry. The marker in README.md must match this
+  # string exactly — see the release-markers job.
+  MCP_SERVER_NAME: vn.datacore/datacore-a2a
+
+jobs:
+  version-alignment:
+    name: version is the same in all three places
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compare __init__.py against server.json
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, sys
+
+          init = pathlib.Path("src/datacore_mcp/__init__.py").read_text()
+          v_init = re.search(r'__version__\s*=\s*"([^"]+)"', init).group(1)
+          srv = json.loads(pathlib.Path("server.json").read_text())
+          v_srv, v_pkg = srv["version"], srv["packages"][0]["version"]
+
+          print(f"__init__.py            = {v_init}")
+          print(f"server.json version    = {v_srv}")
+          print(f"server.json package[0] = {v_pkg}")
+
+          if not (v_init == v_srv == v_pkg):
+              sys.exit(
+                  "VERSION MISMATCH. These three must be equal: hatch reads the version "
+                  "from __init__.py, and the registry reads server.json. A mismatch means "
+                  "the registry points at a PyPI release other than the one just published."
+              )
+          PY
+
+  release-markers:
+    name: ownership marker is present in the README
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Look for the mcp-name marker
+        run: |
+          # The registry proves ownership of the PyPI package by finding the
+          # string `mcp-name: <name>` in the long description — that is, the
+          # README. Without it `mcp-publisher publish` refuses, and since the
+          # README travels inside the uploaded artifact, fixing it costs a
+          # version bump.
+          if ! grep -q "mcp-name: ${MCP_SERVER_NAME}" README.md; then
+            echo "MISSING marker 'mcp-name: ${MCP_SERVER_NAME}' in README.md."
+            echo "The registry looks for this string to confirm package ownership."
+            echo "Missing it means publish is rejected, and because the README ships"
+            echo "with the uploaded artifact, correcting it requires a version bump."
+            exit 1
+          fi
+          echo "marker present"
+          # The README deliberately carries TWO markers: the DNS name and the
+          # io.github fallback. Both existing at once is intentional — do not
+          # "tidy up" the second one.
+          echo "mcp-name markers found: $(grep -c 'mcp-name:' README.md)"
+
+  zero-dependency:
+    name: the package still pulls in nothing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: pyproject declares no dependencies
+        run: |
+          # Zero dependency is a feature, not an accident: whoever installs this
+          # pulls in nothing, and no third-party package becomes an attack path.
+          python - <<'PY'
+          import pathlib, sys, tomllib
+
+          deps = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["dependencies"]
+          if deps:
+              sys.exit(
+                  f"pyproject.toml declares dependencies: {deps}. This package keeps zero "
+                  f"dependencies on purpose — MCP stdio is newline-delimited JSON-RPC, and "
+                  f"urllib is enough."
+              )
+          print("dependencies = [] — as designed")
+          PY
+      - name: the source imports nothing outside the standard library
+        run: |
+          # pyproject can stay empty while an `import requests` sneaks into the
+          # source and breaks the same promise. Check both.
+          STDLIB="json|os|re|sys|time|urllib|uuid|base64|hashlib|typing|collections|dataclasses"
+          BAD=$(grep -hE "^\s*(import|from) " src/datacore_mcp/*.py \
+                | grep -vE "^\s*(import|from) ($STDLIB)\b" \
+                | grep -vE "^\s*from \. import" || true)
+          if [ -n "$BAD" ]; then
+            echo "Imports outside the standard library:"
+            echo "$BAD"
+            exit 1
+          fi
+          echo "standard library only"
