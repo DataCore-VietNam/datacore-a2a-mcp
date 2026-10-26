@@ -69,4 +69,4 @@ packages = ["src/datacore_mcp"]
 # PRIVACY.md có trong danh sách vì người chỉ tải sdist vẫn phải đọc được nó.
 # Runbook phát hành cố ý không nằm trong repo này — nó là tài liệu nội bộ, không
 # phải tài liệu cho người dùng package.
-include = ["src/datacore_mcp", "README.md", "PRIVACY.md", "pyproject.toml"]
+include = ["src/datacore_mcp", "README.md", "README.vi.md", "PRIVACY.md", "pyproject.toml"]
