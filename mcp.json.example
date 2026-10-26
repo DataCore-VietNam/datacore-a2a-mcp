@@ -12,7 +12,7 @@
     "datacore-a2a": {
       "command": "datacore-mcp",
       "env": {
-        "DATACORE_A2A_URL": "https://api.example.com",
+        "DATACORE_A2A_URL": "https://gateway.datacore.vn",
         "DATACORE_API_KEY": "dck_<prefix>_<secret>",
         "DATACORE_TIMEOUT": "30"
       }

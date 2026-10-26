@@ -19,12 +19,12 @@
       "environmentVariables": [
         {
           "name": "DATACORE_A2A_URL",
-          "description": "Base URL của DataCore gateway, ví dụ https://gateway.example.com. Phải là gateway — trỏ thẳng orchestrator sẽ luôn bị từ chối 401.",
+          "description": "Base URL của DataCore gateway, ví dụ https://gateway.datacore.vn. Phải là gateway — trỏ thẳng orchestrator sẽ luôn bị từ chối 401.",
           "isRequired": true
         },
         {
           "name": "DATACORE_API_KEY",
-          "description": "Credential dài hạn dạng dck_... lấy ở trang quản lý credential của DataCore. Server tự đổi nó lấy mandate ngắn hạn và tự gia hạn, nên không phải thay khi hết hạn. Cần biến này HOẶC DATACORE_MANDATE.",
+          "description": "Credential dài hạn dạng dck_..., tạo bằng POST /mcp/credentials — xem README. Server tự đổi nó lấy mandate ngắn hạn và tự gia hạn, nên không phải thay khi hết hạn. Cần biến này HOẶC DATACORE_MANDATE.",
           "isRequired": false,
           "isSecret": true
         },

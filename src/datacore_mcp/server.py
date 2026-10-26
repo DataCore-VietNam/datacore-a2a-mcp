@@ -80,7 +80,7 @@ def load_config():
     base_url = _require(
         "DATACORE_A2A_URL",
         "base URL của endpoint DataCore",
-        "https://api.example.com",
+        "https://gateway.datacore.vn",
     ).rstrip("/")
     # Hai cách xác thực. API key là đường chính: nó không hết hạn theo giờ, và
     # mandate do chính server này xin rồi tự gia hạn — người dùng không bao giờ
@@ -89,7 +89,7 @@ def load_config():
     mandate = os.environ.get("DATACORE_MANDATE", "").strip()
     if not api_key and not mandate:
         log("THIẾU xác thực: cần DATACORE_API_KEY (khuyến nghị) hoặc DATACORE_MANDATE.")
-        log("  DATACORE_API_KEY=dck_...   lấy ở trang quản lý credential")
+        log("  DATACORE_API_KEY=dck_...   tạo bằng POST /mcp/credentials, xem README")
         log("  DATACORE_MANDATE=<jws>     mandate phát tay, sẽ hết hạn và không tự gia hạn")
         log("  xem README để biết cách lấy credential.")
         sys.exit(2)
