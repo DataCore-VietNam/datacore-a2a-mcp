@@ -1,9 +1,9 @@
 # DataCore A2A — MCP server
 
 <!-- mcp-name: vn.datacore/datacore-a2a -->
-<!-- Fallback marker / marker dự phòng: the registry looks for a substring, so
-     both lines can coexist. Keeps a way back if domain verification does not
-     land, without publishing a new version just to fix a comment line.
+<!-- Fallback marker: the registry looks for a substring, so both lines can
+     coexist. Keeps a way back if domain verification does not land, without
+     publishing a new version just to fix a comment line.
      mcp-name: io.github.nambn3tit/datacore-a2a-mcp -->
 
 **English** · [Tiếng Việt](#tiếng-việt)
@@ -222,8 +222,8 @@ Logs go to **stderr**, prefixed `[datacore-mcp]`. stdout is the JSON-RPC channel
 
 | Symptom | Usual cause |
 |---|---|
-| Exits at once, `THIẾU biến môi trường bắt buộc` | `DATACORE_A2A_URL` is not set |
-| Exits at once, `THIẾU xác thực` | Neither `DATACORE_API_KEY` nor `DATACORE_MANDATE` is set |
+| Exits at once, `MISSING required environment variable` | `DATACORE_A2A_URL` is not set |
+| Exits at once, `MISSING authentication` | Neither `DATACORE_API_KEY` nor `DATACORE_MANDATE` is set |
 | `DATACORE_API_KEY` appears to be ignored | You are running `0.1.0` from PyPI, which has no such variable. Install from GitHub — see [Install](#1-install) |
 | `401` on everything | The credential was revoked, or is **past 90 days**, or `DATACORE_A2A_URL` is not the endpoint that issued it. On `DATACORE_MANDATE`: the mandate expired and **is not refreshed**. One message covers all of them on purpose, so the endpoint cannot be used to probe for valid keys. To tell them apart, call `GET /mcp/credentials` and see whether yours is still `ACTIVE` |
 | `409` calling `/mandate/issue` by hand | You put the key in `Authorization`. It belongs in `X-Datacore-Credential` — see [Security model](#security-model). The package gets this right; you only hit it calling by hand |
@@ -470,8 +470,8 @@ Log đi ra **stderr**, prefix `[datacore-mcp]`. stdout là kênh JSON-RPC.
 
 | Triệu chứng | Nguyên nhân thường gặp |
 |---|---|
-| Server thoát ngay, `THIẾU biến môi trường bắt buộc` | Chưa set `DATACORE_A2A_URL` |
-| Server thoát ngay, `THIẾU xác thực` | Chưa set `DATACORE_API_KEY` lẫn `DATACORE_MANDATE` |
+| Server thoát ngay, `MISSING required environment variable` | Chưa set `DATACORE_A2A_URL` |
+| Server thoát ngay, `MISSING authentication` | Chưa set `DATACORE_API_KEY` lẫn `DATACORE_MANDATE` |
 | `DATACORE_API_KEY` như không có tác dụng | Bạn đang chạy bản `0.1.0` lấy từ PyPI, bản đó không có biến này. Cài từ GitHub — xem [Cài](#1-cài) |
 | `401` ở mọi request | Credential bị thu hồi, hoặc **đã quá 90 ngày**, hoặc `DATACORE_A2A_URL` không phải endpoint đã cấp credential đó. Nếu dùng `DATACORE_MANDATE`: mandate hết hạn và **không tự gia hạn**. Một thông báo duy nhất cho tất cả — cố ý, để endpoint không thành công cụ dò key. Cách phân biệt: gọi `GET /mcp/credentials` xem credential còn `ACTIVE` không |
 | `409` khi tự gọi `/mandate/issue` | Bạn gửi key trong `Authorization`. Phải là `X-Datacore-Credential` — xem [Mô hình bảo mật](#mô-hình-bảo-mật). Package tự làm đúng; lỗi này chỉ gặp khi gọi tay |

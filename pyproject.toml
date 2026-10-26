@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 # Tên trên PyPI là vĩnh viễn, không đổi được sau khi đã upload.
 name = "datacore-a2a-mcp"
 dynamic = ["version"]
-description = "MCP server cho các skill dữ liệu DataCore: chuẩn hoá địa chỉ Việt Nam và tra cứu doanh nghiệp"
+description = "MCP server for DataCore's data skills: Vietnamese address normalisation and company lookup"
 readme = "README.md"
 requires-python = ">=3.9"
 
