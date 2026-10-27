@@ -34,16 +34,15 @@ pip install datacore-a2a-mcp
 
 ### 2. Lấy token
 
-```bash
-curl -s -X POST https://gateway.datacore.vn/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"<user>","password":"<pass>"}' | jq -r '.data.token'
-```
+Đăng nhập [datacore.vn](https://datacore.vn), rồi chép header `token` của một
+request bất kỳ tới `gateway.datacore.vn` (DevTools → Network). Hex 64 ký tự.
 
-Một chuỗi mờ (64 ký tự ở các môi trường đã kiểm). Phản hồi còn có `.data.jwt` —
-**không dùng cái đó**. Gateway từ chối mọi request tự mang sẵn header
-`Authorization`, nên JWT bạn tự gửi không bao giờ tới được dịch vụ; `token` mới
-là header nó nhận.
+Không có bản `curl`: `POST /auth/login` giải mã RSA password, và không endpoint
+nào phát khoá công khai — chỉ web app đăng nhập được. Trang quản lý credential
+sẽ bỏ bước này.
+
+Bỏ qua `jwt` cùng lần đăng nhập — gateway trả `409` cho `Authorization` do
+client gửi; `token` mới là header nó nhận.
 
 ### 3. Tạo credential
 
