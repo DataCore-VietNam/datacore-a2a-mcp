@@ -96,6 +96,9 @@ The cap is counted per credential, not per account — three credentials give an
 account three separate caps. The service meters in VND rather than in calls so
 that per-skill prices can be introduced later without rewriting stored caps.
 
+A credential is not bound to a machine or an IP, so the same key works from
+another computer — on one shared quota, and one revocation kills both.
+
 Check what a credential has spent, and revoke it:
 
 ```bash
@@ -135,23 +138,62 @@ and retries exactly once before reporting the failure.
 configured before credentials existed. When it expires you replace it by hand and
 restart the MCP server.
 
-### Claude Code / Claude Desktop
+### Claude Code
 
-Add this to `.mcp.json` (project scope) or to your Claude Desktop config:
+```bash
+claude mcp add datacore-a2a -s user \
+  -e DATACORE_A2A_URL=https://gateway.datacore.vn \
+  -e DATACORE_API_KEY=<YOUR_API_KEY> \
+  -- datacore-mcp
+```
+
+Replace `<YOUR_API_KEY>` with the `api_key` from step 3 — it looks like
+`dck_<8 hex chars>_<secret>`.
+
+`-s user` registers it for every project. Prefer this over a project-scope
+`.mcp.json`: that file tends to get committed, and the key is a 90-day bearer
+credential.
+
+### Claude Desktop
+
+Merge the block below into the config — do not replace the file, it holds your
+app preferences.
+
+| OS | Config path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
 
 ```json
 {
   "mcpServers": {
     "datacore-a2a": {
-      "command": "datacore-mcp",
+      "command": "<PATH_TO_DATACORE_MCP>",
       "env": {
         "DATACORE_A2A_URL": "https://gateway.datacore.vn",
-        "DATACORE_API_KEY": "dck_<prefix>_<secret>"
+        "DATACORE_API_KEY": "<YOUR_API_KEY>"
       }
     }
   }
 }
 ```
+
+Both `<...>` values are yours to fill in — JSON has no comments, so nothing in
+the file will remind you:
+
+| Placeholder | Where it comes from |
+|---|---|
+| `<PATH_TO_DATACORE_MCP>` | `which datacore-mcp` (macOS/Linux) or `where datacore-mcp` (Windows). Something like `/home/you/.local/bin/datacore-mcp` or `C:\Users\you\AppData\Roaming\Python\Scripts\datacore-mcp.exe` |
+| `<YOUR_API_KEY>` | the `api_key` from step 3, shaped `dck_<8 hex chars>_<secret>` |
+
+It has to be an **absolute path**: the desktop app does not inherit your shell
+`PATH`, so a bare command name usually fails to start. `python -m
+datacore_mcp.server` works too. Then quit the app completely — closing the window
+is not enough.
+
+Logs go to stderr, which the app keeps in the `logs/` directory beside that
+config file.
 
 ## Tools
 

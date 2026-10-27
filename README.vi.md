@@ -82,6 +82,9 @@ Hạn mức tính **theo credential**, không theo tài khoản — ba credentia
 mức riêng. Dịch vụ đếm bằng VND thay vì bằng số lượt để sau này đặt giá riêng cho
 từng skill mà không phải viết lại mọi hạn mức đã lưu.
 
+Credential không gắn với máy hay IP, nên cùng một key dùng được từ máy khác —
+chung một hạn mức, và thu hồi một lần là chết cả hai.
+
 Xem một credential đã dùng bao nhiêu, và thu hồi:
 
 ```bash
@@ -121,23 +124,59 @@ lần trước khi báo lỗi.
 những ai đã cấu hình từ trước khi có credential. Hết hạn là phải tự thay rồi khởi
 động lại MCP server.
 
-### Claude Code / Claude Desktop
+### Claude Code
 
-Thêm vào `.mcp.json` (phạm vi project) hoặc config của Claude Desktop:
+```bash
+claude mcp add datacore-a2a -s user \
+  -e DATACORE_A2A_URL=https://gateway.datacore.vn \
+  -e DATACORE_API_KEY=<API_KEY_CUA_BAN> \
+  -- datacore-mcp
+```
+
+Thay `<API_KEY_CUA_BAN>` bằng `api_key` lấy ở bước 3 — dạng
+`dck_<8 ký tự hex>_<secret>`.
+
+`-s user` đăng ký cho mọi project. Nên dùng cách này thay vì `.mcp.json` phạm vi
+project: file đó hay bị commit, mà key là bearer credential sống 90 ngày.
+
+### Claude Desktop
+
+Merge khối dưới vào config — đừng ghi đè cả file, trong đó còn preferences của
+app.
+
+| OS | Đường dẫn config |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
 
 ```json
 {
   "mcpServers": {
     "datacore-a2a": {
-      "command": "datacore-mcp",
+      "command": "<DUONG_DAN_TOI_DATACORE_MCP>",
       "env": {
         "DATACORE_A2A_URL": "https://gateway.datacore.vn",
-        "DATACORE_API_KEY": "dck_<prefix>_<secret>"
+        "DATACORE_API_KEY": "<API_KEY_CUA_BAN>"
       }
     }
   }
 }
 ```
+
+Hai giá trị `<...>` là của bạn, phải tự điền — JSON không có comment nên trong
+file sẽ không còn gì nhắc:
+
+| Chỗ phải thay | Lấy ở đâu |
+|---|---|
+| `<DUONG_DAN_TOI_DATACORE_MCP>` | `which datacore-mcp` (macOS/Linux) hoặc `where datacore-mcp` (Windows). Kiểu như `/home/ban/.local/bin/datacore-mcp` hay `C:\Users\ban\AppData\Roaming\Python\Scripts\datacore-mcp.exe` |
+| `<API_KEY_CUA_BAN>` | `api_key` lấy ở bước 3, dạng `dck_<8 ký tự hex>_<secret>` |
+
+Bắt buộc là **đường dẫn tuyệt đối**: app desktop không kế thừa `PATH` của shell,
+nên để tên lệnh trần thường không khởi động được. `python -m
+datacore_mcp.server` cũng chạy. Xong thì thoát hẳn app — đóng cửa sổ không đủ.
+
+Log đi ra stderr, app giữ trong thư mục `logs/` cạnh chính file config đó.
 
 ## Tool
 

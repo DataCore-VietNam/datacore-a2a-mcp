@@ -3,7 +3,7 @@
   "name": "vn.datacore/datacore-a2a",
   "title": "DataCore A2A",
   "description": "Normalise Vietnamese addresses and look up companies by name or tax code, through DataCore A2A.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "repository": {
     "url": "https://github.com/DataCore-VietNam/datacore-a2a-mcp",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "datacore-a2a-mcp",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "transport": {
         "type": "stdio"
       },
