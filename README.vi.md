@@ -183,25 +183,30 @@ Log đi ra stderr, app giữ trong thư mục `logs/` cạnh chính file config 
 Tool list được **sinh từ endpoint**, không hardcode ở đây — nên khi DataCore thêm
 skill, restart server là thấy tool mới.
 
-Mặc định expose bốn skill đã nối backend thật:
+Mặc định expose năm skill đã nối backend thật:
 
 | Tool | Skill id | Việc nó làm |
 |---|---|---|
 | `address_normalize` | `address.normalize` | Chuẩn hoá địa chỉ Việt Nam thành tỉnh / huyện / xã |
 | `address_validate` | `address.validate` | Kiểm tra một địa chỉ theo dữ liệu hành chính |
 | `company_search` | `company.search` | Tra cứu doanh nghiệp theo tên hoặc mã số thuế |
+| `company_graph` | `company.graph` | Trả về quan hệ của doanh nghiệp — người đại diện, tỉnh, ngành, và mọi thứ khác có trong đồ thị |
 | `company_embeddings` | `company.embeddings` | Sinh vector embedding cho một đoạn văn bản |
 
 Mọi tool nhận đúng một tham số bắt buộc là `text`, dạng chuỗi tự do; không nhận
 thêm thuộc tính nào khác. Mọi tool là **read-only** (`readOnlyHint: true`): không
 ghi, không xoá, không tạo gì, và gọi lại cùng input cho cùng kết quả.
 
-Ba skill còn lại của DataCore (`company.graph`, `company.financial-sankey`,
-`company.news`) **cố ý không được expose**: chúng đang trả dữ liệu
-mock/deterministic. Đặt `DATACORE_SKILLS="*"` thì chúng hiện ra thành tool, nhưng
-credential gói miễn phí không gọi được — allowlist của nó chỉ có bốn skill trên,
-nên mọi lời gọi đều trả `403`. Xin thêm skill lúc tạo credential cũng không phải
-lỗi; yêu cầu bị thu hẹp lặng lẽ về đúng bốn skill đó.
+Hai skill còn lại của DataCore (`company.financial-sankey`, `company.news`)
+**cố ý không được expose**: chúng đang trả dữ liệu mock/deterministic. Đặt
+`DATACORE_SKILLS="*"` thì chúng hiện ra thành tool, nhưng credential gói miễn
+phí không gọi được — allowlist của nó chỉ có năm skill trên, nên mọi lời gọi đều
+trả `403`. Xin thêm skill lúc tạo credential cũng không phải lỗi; yêu cầu bị thu
+hẹp lặng lẽ về đúng năm skill đó.
+
+> `company.graph` trước đây nằm trong danh sách đó. Giờ nó đọc quan hệ thật, nên
+> **credential tạo trước bản này không có nó** — danh sách skill được ghi vào
+> từng credential lúc phát hành. Tạo credential mới để nhận.
 
 ## Ví dụ
 

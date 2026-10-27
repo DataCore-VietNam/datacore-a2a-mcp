@@ -35,15 +35,18 @@ except ImportError:  # chạy trực tiếp file này, ngoài package
 # ------------------------------------------------------------------ cấu hình
 
 #: Skill được expose ra tool. Cố ý là danh sách trắng tường minh chứ không
-#: phải "mọi thứ endpoint trả về": ``company.graph``,
-#: ``company.financial-sankey`` và ``company.news`` hiện trả dữ liệu
-#: demo/deterministic, nên đưa chúng ra ngoài là mô tả dữ liệu giả như dữ liệu
-#: thật — lý do bị registry từ chối phổ biến nhất. Chuyển sang đây khi từng
-#: skill có dữ liệu thật.
+#: phải "mọi thứ endpoint trả về": ``company.financial-sankey`` và
+#: ``company.news`` hiện trả dữ liệu demo/deterministic, nên đưa chúng ra
+#: ngoài là mô tả dữ liệu giả như dữ liệu thật — lý do bị registry từ chối
+#: phổ biến nhất. Chuyển sang đây khi từng skill có dữ liệu thật.
+#:
+#: ``company.graph`` đã chuyển vào danh sách này: nó gọi company360 (Neo4j)
+#: lấy quan hệ thật thay vì dựng hai node từ search+detail như trước.
 DEFAULT_SKILLS = (
     "address.normalize",
     "address.validate",
     "company.search",
+    "company.graph",
     "company.embeddings",
 )
 

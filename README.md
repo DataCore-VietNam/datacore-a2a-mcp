@@ -200,25 +200,31 @@ config file.
 The tool list is **generated from the endpoint**, not hardcoded here — so when
 DataCore adds a skill, restarting the server is enough to see a new tool.
 
-Four skills are exposed by default, the ones wired to a real backend:
+Five skills are exposed by default, the ones wired to a real backend:
 
 | Tool | Skill id | What it does |
 |---|---|---|
 | `address_normalize` | `address.normalize` | Normalises a Vietnamese address into province / district / ward |
 | `address_validate` | `address.validate` | Checks an address against administrative data |
 | `company_search` | `company.search` | Looks a company up by name or tax code |
+| `company_graph` | `company.graph` | Returns the company's relationships — representative, province, industry, and anything else the graph holds |
 | `company_embeddings` | `company.embeddings` | Generates an embedding vector for a piece of text |
 
 Every tool takes one required argument, `text`, a free-text string; no other
 properties are accepted. Every tool is **read-only** (`readOnlyHint: true`):
 nothing is written, deleted or created, and the same input gives the same result.
 
-DataCore's three other skills (`company.graph`, `company.financial-sankey`,
-`company.news`) are **deliberately not exposed**: they currently return
-mock/deterministic data. Setting `DATACORE_SKILLS="*"` lists them as tools, but a
-free-tier credential cannot call them — its allowlist holds only the four skills
-above, so every call returns `403`. Asking for extra skills when creating a
-credential is not an error either; the request is silently narrowed to the four.
+DataCore's two other skills (`company.financial-sankey`, `company.news`) are
+**deliberately not exposed**: they currently return mock/deterministic data.
+Setting `DATACORE_SKILLS="*"` lists them as tools, but a free-tier credential
+cannot call them — its allowlist holds only the five skills above, so every call
+returns `403`. Asking for extra skills when creating a credential is not an error
+either; the request is silently narrowed to the five.
+
+> `company.graph` used to be on that list. It now reads real relationships, so
+> **a credential created before this release does not include it** — the allowed
+> skills are written into each credential when it is issued. Create a new one to
+> pick it up.
 
 ## Examples
 
