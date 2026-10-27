@@ -43,16 +43,15 @@ pip install datacore-a2a-mcp
 
 ### 2. Get a session token
 
-```bash
-curl -s -X POST https://gateway.datacore.vn/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"<user>","password":"<pass>"}' | jq -r '.data.token'
-```
+Sign in at [datacore.vn](https://datacore.vn), then copy the `token` request
+header from any call to `gateway.datacore.vn` (DevTools → Network). 64 hex chars.
 
-An opaque string (64 characters in the deployments we have checked). The response
-also carries `.data.jwt` — **do not use that one**. The gateway rejects any
-request that arrives with a client-supplied `Authorization` header, so a JWT you
-send yourself never reaches the service; `token` is the header it does accept.
+No `curl` equivalent: `POST /auth/login` RSA-decrypts the password and no
+endpoint publishes the public key, so only the web app can complete a login. A
+credential page will remove this step.
+
+Ignore the `jwt` from the same login — the gateway rejects client-supplied
+`Authorization` with `409`; `token` is the header it accepts.
 
 ### 3. Create a credential
 
