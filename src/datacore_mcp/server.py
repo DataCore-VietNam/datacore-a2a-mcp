@@ -138,7 +138,7 @@ class A2AError(Exception):
 
 
 #: Mã status DataCore trả về, dịch sang câu người đọc hiểu được thay vì để
-#: client tự đoán ý nghĩa của một con số như 402.
+#: client tự đoán ý nghĩa của một con số như 429.
 _STATUS_HINT = {
     400: "malformed request, or the skill is not registered at this endpoint",
     401: (
@@ -146,8 +146,12 @@ _STATUS_HINT = {
         "on DATACORE_API_KEY, check the credential is still active and that "
         "DATACORE_A2A_URL is the endpoint that issued it"
     ),
-    402: "past the mandate's spend cap — this month's quota is spent",
     403: "skill outside the mandate's allowlist",
+    # Hai nguồn khác nhau cùng trả 429; phần detail của server nói rõ cái nào.
+    429: (
+        "rate limited. Either the account's call quota for the rolling window is "
+        "used up, or this credential asked for more than 10 mandates in a minute"
+    ),
     404: "no such route — check DATACORE_A2A_URL",
     502: "the backend behind this skill is not answering",
     503: "the service is temporarily unavailable",

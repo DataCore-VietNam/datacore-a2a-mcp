@@ -62,8 +62,10 @@ curl -s -X POST https://gateway.datacore.vn/mcp/credentials \
   -d '{"name":"claude-code"}' | jq .
 ```
 
-`201` with the credential, including `api_key`, `key_prefix`, `allowed_skills`,
-`spend_cap_vnd` and `quota_period`.
+`201` with the credential, including `api_key`, `key_prefix` and
+`allowed_skills`. It still carries `spend_cap_vnd` and `quota_period`; both are
+leftovers that no longer limit anything — see
+[Quotas and limits](https://github.com/DataCore-VietNam/datacore-a2a-mcp/blob/master/README.md#quotas-and-limits).
 
 Copy `api_key` straight away — it is returned **once**. Only a hash is stored, so
 there is no way to read it back. Lose it and you create a new one.
@@ -85,21 +87,21 @@ exists, these commands keep working.
 
 | | |
 |---|---|
-| Free tier | 500,000 VND of spend **per credential per month** |
-| Price per call | 500 VND by default, so roughly 1,000 calls |
-| Reset | 1st of the month, `Asia/Ho_Chi_Minh` |
+| Free tier | 1,000 calls **per account**, over a rolling 30-day window |
+| Reset | no fixed date — a call frees up 30 days after it was made |
 | Credentials | at most 3 active per account |
 | Credential lifetime | 90 days |
 | Mandate issuance | at most 10 exchanges per minute per credential |
 
-The cap is counted per credential, not per account — three credentials give an
-account three separate caps. The service meters in VND rather than in calls so
-that per-skill prices can be introduced later without rewriting stored caps.
+The quota belongs to the **account**, not to the credential: three credentials
+share one pool of 1,000, and creating a new key does not reset anything. A call
+that fails because the backend is down is given back; one rejected for asking
+for a skill outside your tier is not counted in the first place.
 
 A credential is not bound to a machine or an IP, so the same key works from
 another computer — on one shared quota, and one revocation kills both.
 
-Check what a credential has spent, and revoke it:
+Check what the account has used, and revoke a credential:
 
 ```bash
 curl -s https://gateway.datacore.vn/mcp/credentials/<id>/usage -H "token: <token>" | jq .
@@ -107,9 +109,11 @@ curl -s https://gateway.datacore.vn/mcp/credentials -H "token: <token>" | jq .
 curl -X DELETE https://gateway.datacore.vn/mcp/credentials/<id> -H "token: <token>"
 ```
 
-`/usage` reports `spent_vnd`, `spend_cap_vnd`, `quota_period` and `resets_at`.
-Revocation returns `204`, and `404` if the id is not yours — the two cases are
-deliberately indistinguishable.
+`/usage` reports `used` and `limit` for the whole account, `window_days`,
+`credential_requests_30d` for that one key, and `oldest_counted_at` — add
+`window_days` to it and that is when one call comes back. Revocation returns
+`204`, and `404` if the id is not yours — the two cases are deliberately
+indistinguishable.
 
 ## Configuration
 
@@ -285,8 +289,8 @@ Logs go to **stderr**, prefixed `[datacore-mcp]`. stdout is the JSON-RPC channel
 | `401` on everything | The credential was revoked, or is **past 90 days**, or `DATACORE_A2A_URL` is not the endpoint that issued it. On `DATACORE_MANDATE`: the mandate expired and **is not refreshed**. One message covers all of them on purpose, so the endpoint cannot be used to probe for valid keys. To tell them apart, call `GET /mcp/credentials` and see whether yours is still `ACTIVE` |
 | `409` calling `/mandate/issue` by hand | You put the key in `Authorization`. It belongs in `X-Datacore-Credential`. The package gets this right; you only hit it calling by hand |
 | `409` creating a credential | You already hold 3 active ones. Revoke one first |
-| `429` | More than 10 mandate exchanges in a minute for one credential. The package refreshes about four times an hour, so this means something is looping |
-| `402` | This month's cap for that credential is spent. It resets on the 1st |
+| `429` on a tool call | The account's 1,000 calls for the rolling 30-day window are used up. No reset date: the oldest call frees up 30 days after it was made |
+| `429` calling `/mandate/issue` | More than 10 mandate exchanges in a minute for one credential. The package refreshes about four times an hour, so this means something is looping |
 | `403` | The skill is outside the credential's allowlist — the free tier covers only the four skills above, and that set cannot be widened |
 | `400` | Malformed request, or the skill id is not registered at the endpoint |
 | `404` | No such route — check `DATACORE_A2A_URL` |

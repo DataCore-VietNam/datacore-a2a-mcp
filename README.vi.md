@@ -53,8 +53,9 @@ curl -s -X POST https://gateway.datacore.vn/mcp/credentials \
   -d '{"name":"claude-code"}' | jq .
 ```
 
-`201` kèm credential, gồm `api_key`, `key_prefix`, `allowed_skills`,
-`spend_cap_vnd` và `quota_period`.
+`201` kèm credential, gồm `api_key`, `key_prefix` và `allowed_skills`. Vẫn còn
+`spend_cap_vnd` và `quota_period` nhưng cả hai là tàn dư, không chặn gì nữa —
+xem [Hạn mức](#hạn-mức).
 
 Chép lại `api_key` ngay — nó chỉ hiện **đúng một lần**. Dịch vụ chỉ lưu bản băm,
 không có cách nào đọc lại. Mất thì tạo cái mới.
@@ -71,21 +72,21 @@ lý, các lệnh này vẫn chạy.
 
 | | |
 |---|---|
-| Gói miễn phí | 500.000 VND chi tiêu **mỗi credential mỗi tháng** |
-| Giá mỗi lượt gọi | mặc định 500 VND, tức khoảng 1.000 lượt |
-| Thời điểm reset | ngày 1 hàng tháng, giờ `Asia/Ho_Chi_Minh` |
+| Gói miễn phí | 1.000 lượt gọi **mỗi tài khoản**, trong cửa sổ trượt 30 ngày |
+| Thời điểm reset | không có mốc cố định — mỗi lượt được trả lại sau 30 ngày kể từ lúc gọi |
 | Số credential | tối đa 3 cái còn hiệu lực mỗi tài khoản |
 | Hạn credential | 90 ngày |
 | Tần suất đổi mandate | tối đa 10 lần mỗi phút cho mỗi credential |
 
-Hạn mức tính **theo credential**, không theo tài khoản — ba credential là ba hạn
-mức riêng. Dịch vụ đếm bằng VND thay vì bằng số lượt để sau này đặt giá riêng cho
-từng skill mà không phải viết lại mọi hạn mức đã lưu.
+Hạn mức thuộc về **tài khoản**, không thuộc về credential: ba key tiêu chung một
+hồ 1.000 lượt, tạo key mới không làm bộ đếm về 0. Lượt gọi hỏng vì backend không
+trả lời được hoàn lại; lượt bị từ chối vì xin skill ngoài tier thì ngay từ đầu
+không bị tính.
 
 Credential không gắn với máy hay IP, nên cùng một key dùng được từ máy khác —
 chung một hạn mức, và thu hồi một lần là chết cả hai.
 
-Xem một credential đã dùng bao nhiêu, và thu hồi:
+Xem tài khoản đã dùng bao nhiêu, và thu hồi credential:
 
 ```bash
 curl -s https://gateway.datacore.vn/mcp/credentials/<id>/usage -H "token: <token>" | jq .
@@ -93,9 +94,10 @@ curl -s https://gateway.datacore.vn/mcp/credentials -H "token: <token>" | jq .
 curl -X DELETE https://gateway.datacore.vn/mcp/credentials/<id> -H "token: <token>"
 ```
 
-`/usage` trả về `spent_vnd`, `spend_cap_vnd`, `quota_period` và `resets_at`. Thu
-hồi trả `204`, và `404` nếu id không phải của bạn — hai trường hợp cố ý không
-phân biệt được.
+`/usage` trả về `used` và `limit` của cả tài khoản, `window_days`,
+`credential_requests_30d` của riêng key đó, và `oldest_counted_at` — cộng
+`window_days` vào mốc này là lúc được trả lại một suất. Thu hồi trả `204`, và
+`404` nếu id không phải của bạn — hai trường hợp cố ý không phân biệt được.
 
 ## Cấu hình
 
@@ -263,8 +265,8 @@ báo lúc chạy đều bằng tiếng Anh.
 | `401` ở mọi request | Credential bị thu hồi, hoặc **đã quá 90 ngày**, hoặc `DATACORE_A2A_URL` không phải endpoint đã cấp credential đó. Nếu dùng `DATACORE_MANDATE`: mandate hết hạn và **không tự gia hạn**. Một thông báo duy nhất cho tất cả — cố ý, để endpoint không thành công cụ dò key. Cách phân biệt: gọi `GET /mcp/credentials` xem credential còn `ACTIVE` không |
 | `409` khi tự gọi `/mandate/issue` | Bạn gửi key trong `Authorization`. Phải là `X-Datacore-Credential` — xem [Mô hình bảo mật](#mô-hình-bảo-mật). Package tự làm đúng; lỗi này chỉ gặp khi gọi tay |
 | `409` khi tạo credential | Bạn đang giữ đủ 3 credential còn hiệu lực. Thu hồi bớt một cái |
-| `429` | Quá 10 lần đổi mandate trong một phút cho cùng một credential. Package chỉ xin khoảng bốn lần mỗi giờ, nên gặp mã này nghĩa là có cái gì đó đang lặp |
-| `402` | Credential đó đã dùng hết hạn mức tháng này. Hạn mức reset vào ngày 1 |
+| `429` khi gọi tool | Tài khoản đã dùng hết 1.000 lượt trong cửa sổ trượt 30 ngày. Không có ngày reset: lượt cũ nhất được trả lại sau đúng 30 ngày kể từ lúc gọi |
+| `429` khi gọi `/mandate/issue` | Quá 10 lần đổi mandate trong một phút cho cùng một credential. Package chỉ xin khoảng bốn lần mỗi giờ, nên gặp mã này nghĩa là có cái gì đó đang lặp |
 | `403` | Skill nằm ngoài allowlist của credential — gói miễn phí chỉ có bốn skill ở trên, và tập đó không mở rộng được |
 | `400` | Request không hợp lệ, hoặc skill id chưa được đăng ký ở endpoint |
 | `404` | Không có route đó — kiểm tra lại `DATACORE_A2A_URL` |
