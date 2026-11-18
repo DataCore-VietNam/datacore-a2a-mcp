@@ -17,6 +17,7 @@ newline nên không cần SDK — và quan trọng hơn, người cài không ph
 cây dependency nào.
 """
 
+import base64
 import json
 import os
 import re
@@ -34,21 +35,16 @@ except ImportError:  # chạy trực tiếp file này, ngoài package
 
 # ------------------------------------------------------------------ cấu hình
 
-#: Skill được expose ra tool. Cố ý là danh sách trắng tường minh chứ không
-#: phải "mọi thứ endpoint trả về": ``company.financial-sankey`` và
-#: ``company.news`` hiện trả dữ liệu demo/deterministic, nên đưa chúng ra
-#: ngoài là mô tả dữ liệu giả như dữ liệu thật — lý do bị registry từ chối
-#: phổ biến nhất. Chuyển sang đây khi từng skill có dữ liệu thật.
+#: ``SKILL_FILTER`` khi ``DATACORE_SKILLS`` để trống: expose đúng những skill
+#: có trong claim ``allowed_skills`` của mandate.
 #:
-#: ``company.graph`` đã chuyển vào danh sách này: nó gọi company360 (Neo4j)
-#: lấy quan hệ thật thay vì dựng hai node từ search+detail như trước.
-DEFAULT_SKILLS = (
-    "address.normalize",
-    "address.validate",
-    "company.search",
-    "company.graph",
-    "company.embeddings",
-)
+#: Bản trước hardcode năm skill ở đây. Từ khi mandate-issuer cấu hình skill
+#: theo tier (bảng ``mcp_tier_skill``, sửa được từ màn hình admin), danh sách
+#: đó thành một cổng thứ hai không ai cập nhật: admin bật ``dataset.list`` cho
+#: tier, gateway trả nó trong discovery, mandate cho phép nó, vậy mà Claude vẫn
+#: không thấy. Skill nào chưa đủ chín để ra ngoài thì gỡ khỏi tier, không phải
+#: sửa client này.
+SCOPE_FROM_MANDATE = "mandate"
 
 PROTOCOL_FALLBACK = "2025-06-18"
 
@@ -103,13 +99,13 @@ def load_config():
     elif raw_skills:
         skills = tuple(s.strip() for s in raw_skills.split(",") if s.strip())
     else:
-        skills = DEFAULT_SKILLS
+        skills = SCOPE_FROM_MANDATE
 
     timeout = float(os.environ.get("DATACORE_TIMEOUT", "30"))
     return base_url, api_key, mandate, skills, timeout
 
 
-BASE_URL, API_KEY, MANDATE, SKILL_FILTER, TIMEOUT = "", "", "", DEFAULT_SKILLS, 30.0
+BASE_URL, API_KEY, MANDATE, SKILL_FILTER, TIMEOUT = "", "", "", SCOPE_FROM_MANDATE, 30.0
 
 #: Mandate đang giữ và thời điểm hết hạn (epoch giây). Chỉ ở trong RAM — không
 #: ghi ra đĩa, không vào log, không bao giờ để người dùng nhìn thấy.
@@ -147,16 +143,30 @@ _STATUS_HINT = {
         "DATACORE_A2A_URL is the endpoint that issued it"
     ),
     403: "skill outside the mandate's allowlist",
-    # Hai nguồn khác nhau cùng trả 429; phần detail của server nói rõ cái nào.
-    429: (
-        "rate limited. Either the account's call quota for the rolling window is "
-        "used up, or this credential asked for more than 10 mandates in a minute"
-    ),
     404: "no such route — check DATACORE_A2A_URL",
     502: "the backend behind this skill is not answering",
     503: "the service is temporarily unavailable",
 }
 
+
+#: 429 có hai nghĩa: hết hạn mức request (orchestrator, chi tiết bắt đầu bằng
+#: ``QUOTA_EXCEEDED``) và xin mandate quá dồn dập (``/mandate/issue``). Gộp
+#: làm một thì người dùng bị bảo "hết quota" khi chỉ cần chờ một phút.
+_QUOTA_HINT = (
+    "request quota is used up — DataCore counts every successful call in the "
+    "last 30 days, across all your keys and Claude Connect; see the detail for "
+    "when the next request frees up"
+)
+_RATE_LIMIT_HINT = "too many mandate requests — wait a minute and retry"
+
+
+def _hint_for(status, detail):
+    """Câu giải thích cho một mã status, tách hai nghĩa của 429 theo chi tiết lỗi."""
+    if status == 429:
+        if str(detail or "").startswith("QUOTA_EXCEEDED"):
+            return _QUOTA_HINT
+        return _RATE_LIMIT_HINT
+    return _STATUS_HINT.get(status, "error from DataCore")
 
 def _error_detail(exc):
     """
@@ -272,6 +282,39 @@ def tool_name_for(skill_id):
     return _TOOL_NAME_SAFE.sub("_", skill_id)
 
 
+def allowed_by_mandate(token):
+    """
+    Tập ``allowed_skills`` trong payload của mandate, hoặc ``None`` nếu không
+    đọc được.
+
+    KHÔNG verify chữ ký, và không cần: kết quả chỉ dùng để khỏi liệt kê tool
+    chắc chắn bị 403. Gateway vẫn là nơi duy nhất thực thi quyền.
+    """
+    try:
+        payload = token.split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+    except Exception:
+        return None
+    skills = claims.get("allowed_skills") if isinstance(claims, dict) else None
+    if not isinstance(skills, list):
+        return None
+    return {s for s in skills if isinstance(s, str)}
+
+
+def _wanted_skills():
+    """``(tập skill được expose hoặc None = tất cả, lý do để ghi log)``."""
+    if SKILL_FILTER == SCOPE_FROM_MANDATE:
+        allowed = allowed_by_mandate(current_mandate())
+        if allowed is None:
+            log("could not read allowed_skills from the mandate; "
+                "listing every skill the endpoint returns")
+        return allowed, "the mandate's allowed_skills"
+    if SKILL_FILTER is None:
+        return None, "DATACORE_SKILLS"
+    return set(SKILL_FILTER), "DATACORE_SKILLS"
+
+
 def discover_tools():
     """
     Sinh tool list từ endpoint discovery.
@@ -285,6 +328,9 @@ def discover_tools():
     if not isinstance(entries, list):
         raise RuntimeError(f"/orchestrate/skills returned {type(entries).__name__}, expected a list")
 
+    # Sau http_json nên mandate đã nằm trong cache: không tốn thêm request.
+    wanted, filter_source = _wanted_skills()
+
     _skill_by_tool_name.clear()
     tools = []
     skipped = []
@@ -293,7 +339,7 @@ def discover_tools():
         skill_id = (entry or {}).get("id")
         if not skill_id:
             continue
-        if SKILL_FILTER is not None and skill_id not in SKILL_FILTER:
+        if wanted is not None and skill_id not in wanted:
             skipped.append(skill_id)
             continue
 
@@ -342,7 +388,7 @@ def discover_tools():
 
     log(f"{len(tools)} tools from {BASE_URL}: {sorted(_skill_by_tool_name.values())}")
     if skipped:
-        log(f"skipped {len(skipped)} skills outside DATACORE_SKILLS: {sorted(skipped)}")
+        log(f"skipped {len(skipped)} skills outside {filter_source}: {sorted(skipped)}")
     return tools
 
 
@@ -363,7 +409,7 @@ def call_skill(skill_id, text):
 def _tool_error(exc):
     """Câu lỗi cho Claude đọc: mã status → nguyên nhân, kèm chi tiết của server."""
     if isinstance(exc, A2AError):
-        hint = _STATUS_HINT.get(exc.status, "error from DataCore")
+        hint = _hint_for(exc.status, exc.detail)
         return f"{hint} (HTTP {exc.status}): {exc.detail}"
     return str(exc)
 
@@ -465,7 +511,12 @@ def main():
     # Không log API_KEY lẫn MANDATE, kể cả một phần: cả hai đều cấp quyền chi
     # tiêu, và stderr của MCP server thường được client ghi ra file log.
     auth_mode = "api-key (self-refreshing)" if API_KEY else "static mandate"
-    scope = "every skill the endpoint offers" if SKILL_FILTER is None else ", ".join(SKILL_FILTER)
+    if SKILL_FILTER == SCOPE_FROM_MANDATE:
+        scope = "whatever the mandate allows"
+    elif SKILL_FILTER is None:
+        scope = "every skill the endpoint offers"
+    else:
+        scope = ", ".join(SKILL_FILTER)
     log(f"start v{__version__} | base={BASE_URL} | auth={auth_mode} | "
         f"timeout={TIMEOUT}s | skills={scope}")
 

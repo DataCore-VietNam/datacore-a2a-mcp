@@ -53,9 +53,8 @@ curl -s -X POST https://gateway.datacore.vn/mcp/credentials \
   -d '{"name":"claude-code"}' | jq .
 ```
 
-`201` kèm credential, gồm `api_key`, `key_prefix` và `allowed_skills`. Vẫn còn
-`spend_cap_vnd` và `quota_period` nhưng cả hai là tàn dư, không chặn gì nữa —
-xem [Hạn mức](#hạn-mức).
+`201` kèm credential, gồm `api_key`, `key_prefix`, `allowed_skills`,
+`spend_cap_vnd` và `quota_period`.
 
 Chép lại `api_key` ngay — nó chỉ hiện **đúng một lần**. Dịch vụ chỉ lưu bản băm,
 không có cách nào đọc lại. Mất thì tạo cái mới.
@@ -72,32 +71,41 @@ lý, các lệnh này vẫn chạy.
 
 | | |
 |---|---|
-| Gói miễn phí | 1.000 lượt gọi **mỗi tài khoản**, trong cửa sổ trượt 30 ngày |
-| Thời điểm reset | không có mốc cố định — mỗi lượt được trả lại sau 30 ngày kể từ lúc gọi |
+| Số request | 1.000 mỗi tài khoản trong cửa sổ trượt 30 ngày |
+| Thế nào là một lượt | mỗi lần gọi tới được skill và nhận được câu trả lời |
 | Số credential | tối đa 3 cái còn hiệu lực mỗi tài khoản |
 | Hạn credential | 90 ngày |
 | Tần suất đổi mandate | tối đa 10 lần mỗi phút cho mỗi credential |
 
-Hạn mức thuộc về **tài khoản**, không thuộc về credential: ba key tiêu chung một
-hồ 1.000 lượt, tạo key mới không làm bộ đếm về 0. Lượt gọi hỏng vì backend không
-trả lời được hoàn lại; lượt bị từ chối vì xin skill ngoài tier thì ngay từ đầu
-không bị tính.
+Hạn mức thuộc về **tài khoản**, không thuộc credential: mọi key bạn giữ và Claude
+Connect dùng chung 1.000 lượt đó. Thu hồi key hay tạo key mới đều không làm mới
+hạn mức. Cửa sổ trượt nên không có ngày reset — một lượt được trả lại đúng 30
+ngày sau lúc gọi.
 
-Credential không gắn với máy hay IP, nên cùng một key dùng được từ máy khác —
-chung một hạn mức, và thu hồi một lần là chết cả hai.
+Gọi mà không tìm thấy gì (không có công ty khớp chẳng hạn) vẫn tính một lượt: việc
+đã được làm. Gọi hỏng vì DataCore không tới được hệ thống phía sau thì không tính,
+và gọi bị từ chối trước khi chạy (skill không được phép, mandate sai, đã hết hạn
+mức) cũng không tính.
 
-Xem tài khoản đã dùng bao nhiêu, và thu hồi credential:
+Quá hạn mức, lượt gọi nhận `429` với
+`QUOTA_EXCEEDED: Used 1000 of 1000 requests in the last 30 days; next slot at <thời điểm>`
+và header `Retry-After` tính bằng giây.
+
+Credential không gắn với máy hay IP, nên cùng một key dùng được từ máy khác — và
+thu hồi một lần là chết cả hai.
+
+Xem đã dùng bao nhiêu, liệt kê key, và thu hồi:
 
 ```bash
-curl -s https://gateway.datacore.vn/mcp/credentials/<id>/usage -H "token: <token>" | jq .
+curl -s https://gateway.datacore.vn/mcp/credentials/usage -H "token: <token>" | jq .
 curl -s https://gateway.datacore.vn/mcp/credentials -H "token: <token>" | jq .
 curl -X DELETE https://gateway.datacore.vn/mcp/credentials/<id> -H "token: <token>"
 ```
 
-`/usage` trả về `used` và `limit` của cả tài khoản, `window_days`,
-`credential_requests_30d` của riêng key đó, và `oldest_counted_at` — cộng
-`window_days` vào mốc này là lúc được trả lại một suất. Thu hồi trả `204`, và
-`404` nếu id không phải của bạn — hai trường hợp cố ý không phân biệt được.
+`/mcp/credentials/usage` trả về `used`, `limit`, `remaining`, `window_days`,
+`oldest_counted_at` và `next_slot_at` — lúc lượt kế tiếp được trả lại. Danh sách
+key có `requests_30d` cho từng key. Thu hồi trả `204`, và `404` nếu id không phải
+của bạn — hai trường hợp cố ý không phân biệt được.
 
 ## Cấu hình
 
@@ -106,7 +114,7 @@ curl -X DELETE https://gateway.datacore.vn/mcp/credentials/<id> -H "token: <toke
 | `DATACORE_A2A_URL` | có | Base URL gateway DataCore — `https://gateway.datacore.vn`, trừ khi bạn được cấp endpoint riêng |
 | `DATACORE_API_KEY` | có¹ | Credential dài hạn dạng `dck_<prefix>_<secret>`. Server tự đổi nó lấy mandate ngắn hạn và tự gia hạn |
 | `DATACORE_MANDATE` | có¹ | Mandate AP2 phát tay. Chỉ dùng nếu bạn được cấp theo cách cũ — xem ghi chú bên dưới |
-| `DATACORE_SKILLS` | không | Danh sách skill id cách nhau bằng phẩy để thu hẹp tool, hoặc `*` để lấy hết những gì endpoint trả về. Bỏ trống dùng bốn skill mặc định |
+| `DATACORE_SKILLS` | không | Danh sách skill id cách nhau bằng phẩy để thu hẹp tool, hoặc `*` để lấy hết những gì endpoint trả về. Bỏ trống thì liệt kê mọi skill credential của bạn được phép gọi |
 | `DATACORE_TIMEOUT` | không | Timeout mỗi request (giây), mặc định `30` |
 
 ¹ Cần **một trong hai**. Có cả hai thì `DATACORE_MANDATE` được ưu tiên.
@@ -199,16 +207,16 @@ Mọi tool nhận đúng một tham số bắt buộc là `text`, dạng chuỗi
 thêm thuộc tính nào khác. Mọi tool là **read-only** (`readOnlyHint: true`): không
 ghi, không xoá, không tạo gì, và gọi lại cùng input cho cùng kết quả.
 
-Hai skill còn lại của DataCore (`company.financial-sankey`, `company.news`)
-**cố ý không được expose**: chúng đang trả dữ liệu mock/deterministic. Đặt
-`DATACORE_SKILLS="*"` thì chúng hiện ra thành tool, nhưng credential gói miễn
-phí không gọi được — allowlist của nó chỉ có năm skill trên, nên mọi lời gọi đều
-trả `403`. Xin thêm skill lúc tạo credential cũng không phải lỗi; yêu cầu bị thu
-hẹp lặng lẽ về đúng năm skill đó.
+Bảng trên không phải toàn bộ. Server liệt kê **mọi skill credential của bạn
+được phép gọi** — tức `allowed_skills` trong mandate nó đang giữ — nên khi
+DataCore bật thêm skill cho tier của bạn (ví dụ `dataset.list`, `dataset.query`,
+`company.financial-sankey`), skill đó hiện ra sau khi restart server, bạn không
+phải sửa gì. Skill endpoint có nhưng credential không được gọi thì bị bỏ ra, vì
+gọi lúc nào cũng nhận `403`; đặt `DATACORE_SKILLS="*"` nếu vẫn muốn thấy chúng.
 
-> `company.graph` trước đây nằm trong danh sách đó. Giờ nó đọc quan hệ thật, nên
-> **credential tạo trước bản này không có nó** — danh sách skill được ghi vào
-> từng credential lúc phát hành. Tạo credential mới để nhận.
+Danh sách skill được đọc lúc phát mỗi mandate, không phải lúc tạo credential,
+nên credential đang dùng sẽ nhận skill mới bật trong vòng một vòng đời mandate
+(tối đa 15 phút).
 
 ## Ví dụ
 
@@ -265,8 +273,8 @@ báo lúc chạy đều bằng tiếng Anh.
 | `401` ở mọi request | Credential bị thu hồi, hoặc **đã quá 90 ngày**, hoặc `DATACORE_A2A_URL` không phải endpoint đã cấp credential đó. Nếu dùng `DATACORE_MANDATE`: mandate hết hạn và **không tự gia hạn**. Một thông báo duy nhất cho tất cả — cố ý, để endpoint không thành công cụ dò key. Cách phân biệt: gọi `GET /mcp/credentials` xem credential còn `ACTIVE` không |
 | `409` khi tự gọi `/mandate/issue` | Bạn gửi key trong `Authorization`. Phải là `X-Datacore-Credential` — xem [Mô hình bảo mật](#mô-hình-bảo-mật). Package tự làm đúng; lỗi này chỉ gặp khi gọi tay |
 | `409` khi tạo credential | Bạn đang giữ đủ 3 credential còn hiệu lực. Thu hồi bớt một cái |
-| `429` khi gọi tool | Tài khoản đã dùng hết 1.000 lượt trong cửa sổ trượt 30 ngày. Không có ngày reset: lượt cũ nhất được trả lại sau đúng 30 ngày kể từ lúc gọi |
-| `429` khi gọi `/mandate/issue` | Quá 10 lần đổi mandate trong một phút cho cùng một credential. Package chỉ xin khoảng bốn lần mỗi giờ, nên gặp mã này nghĩa là có cái gì đó đang lặp |
+| `429` (khi xin mandate) | Quá 10 lần đổi mandate trong một phút cho cùng một credential. Package chỉ xin khoảng bốn lần mỗi giờ, nên gặp mã này nghĩa là có cái gì đó đang lặp |
+| `429` `QUOTA_EXCEEDED` | Tài khoản đã dùng hết 1.000 request trong 30 ngày qua — tính chung mọi key và Claude Connect. Thông báo lỗi ghi lúc nào có lượt mới; `Retry-After` cho số giây |
 | `403` | Skill nằm ngoài allowlist của credential — gói miễn phí chỉ có bốn skill ở trên, và tập đó không mở rộng được |
 | `400` | Request không hợp lệ, hoặc skill id chưa được đăng ký ở endpoint |
 | `404` | Không có route đó — kiểm tra lại `DATACORE_A2A_URL` |

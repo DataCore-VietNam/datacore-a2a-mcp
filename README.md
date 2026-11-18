@@ -62,10 +62,8 @@ curl -s -X POST https://gateway.datacore.vn/mcp/credentials \
   -d '{"name":"claude-code"}' | jq .
 ```
 
-`201` with the credential, including `api_key`, `key_prefix` and
-`allowed_skills`. It still carries `spend_cap_vnd` and `quota_period`; both are
-leftovers that no longer limit anything — see
-[Quotas and limits](https://github.com/DataCore-VietNam/datacore-a2a-mcp/blob/master/README.md#quotas-and-limits).
+`201` with the credential, including `api_key`, `key_prefix`, `allowed_skills`,
+`spend_cap_vnd` and `quota_period`.
 
 Copy `api_key` straight away — it is returned **once**. Only a hash is stored, so
 there is no way to read it back. Lose it and you create a new one.
@@ -87,33 +85,41 @@ exists, these commands keep working.
 
 | | |
 |---|---|
-| Free tier | 1,000 calls **per account**, over a rolling 30-day window |
-| Reset | no fixed date — a call frees up 30 days after it was made |
+| Requests | 1,000 per account in a sliding 30-day window |
+| What counts | every call that reached a skill and got an answer |
 | Credentials | at most 3 active per account |
 | Credential lifetime | 90 days |
 | Mandate issuance | at most 10 exchanges per minute per credential |
 
-The quota belongs to the **account**, not to the credential: three credentials
-share one pool of 1,000, and creating a new key does not reset anything. A call
-that fails because the backend is down is given back; one rejected for asking
-for a skill outside your tier is not counted in the first place.
+The quota belongs to the **account**, not to a credential: every key you hold
+and Claude Connect draw from the same 1,000. Revoking a key or creating a new one
+does not reset it. The window slides, so there is no reset date — a request comes
+back 30 days after it was made.
+
+A call that finds nothing (no matching company, say) still counts: the work was
+done. A call that fails because DataCore could not reach the backend does not,
+and neither does a call refused before it ran (skill not allowed, bad mandate,
+quota already used).
+
+Past the quota, calls get `429` with
+`QUOTA_EXCEEDED: Used 1000 of 1000 requests in the last 30 days; next slot at <time>`
+and a `Retry-After` header in seconds.
 
 A credential is not bound to a machine or an IP, so the same key works from
-another computer — on one shared quota, and one revocation kills both.
+another computer — and one revocation kills both.
 
-Check what the account has used, and revoke a credential:
+Check usage, list your keys, and revoke one:
 
 ```bash
-curl -s https://gateway.datacore.vn/mcp/credentials/<id>/usage -H "token: <token>" | jq .
+curl -s https://gateway.datacore.vn/mcp/credentials/usage -H "token: <token>" | jq .
 curl -s https://gateway.datacore.vn/mcp/credentials -H "token: <token>" | jq .
 curl -X DELETE https://gateway.datacore.vn/mcp/credentials/<id> -H "token: <token>"
 ```
 
-`/usage` reports `used` and `limit` for the whole account, `window_days`,
-`credential_requests_30d` for that one key, and `oldest_counted_at` — add
-`window_days` to it and that is when one call comes back. Revocation returns
-`204`, and `404` if the id is not yours — the two cases are deliberately
-indistinguishable.
+`/mcp/credentials/usage` reports `used`, `limit`, `remaining`, `window_days`,
+`oldest_counted_at` and `next_slot_at` — when the next request comes back. The
+list shows `requests_30d` for each key. Revocation returns `204`, and `404` if the
+id is not yours — the two cases are deliberately indistinguishable.
 
 ## Configuration
 
@@ -122,7 +128,7 @@ indistinguishable.
 | `DATACORE_A2A_URL` | yes | Base URL of the DataCore gateway — `https://gateway.datacore.vn`, unless you were given your own endpoint |
 | `DATACORE_API_KEY` | yes¹ | Long-lived credential, shaped `dck_<prefix>_<secret>`. The server exchanges it for short-lived mandates and refreshes them itself |
 | `DATACORE_MANDATE` | yes¹ | A hand-issued AP2 mandate. Only for callers set up the old way — see below |
-| `DATACORE_SKILLS` | no | Comma-separated skill ids to narrow the tool list, or `*` for everything the endpoint returns. Empty uses the default four |
+| `DATACORE_SKILLS` | no | Comma-separated skill ids to narrow the tool list, or `*` for everything the endpoint returns. Empty lists every skill your credential is allowed to call |
 | `DATACORE_TIMEOUT` | no | Per-request timeout in seconds, default `30` |
 
 ¹ **One of the two** is required. If both are set, `DATACORE_MANDATE` wins.
@@ -218,17 +224,17 @@ Every tool takes one required argument, `text`, a free-text string; no other
 properties are accepted. Every tool is **read-only** (`readOnlyHint: true`):
 nothing is written, deleted or created, and the same input gives the same result.
 
-DataCore's two other skills (`company.financial-sankey`, `company.news`) are
-**deliberately not exposed**: they currently return mock/deterministic data.
-Setting `DATACORE_SKILLS="*"` lists them as tools, but a free-tier credential
-cannot call them — its allowlist holds only the five skills above, so every call
-returns `403`. Asking for extra skills when creating a credential is not an error
-either; the request is silently narrowed to the five.
+The table is not the whole list. The server lists **every skill your
+credential is allowed to call** — the `allowed_skills` in the mandate it holds —
+so when DataCore enables a skill for your tier (for example `dataset.list`,
+`dataset.query`, `company.financial-sankey`), it shows up after you restart the
+server, with nothing to change on your side. Skills the endpoint knows but your
+credential cannot call are left out, because every call to them would return
+`403`; `DATACORE_SKILLS="*"` lists them anyway.
 
-> `company.graph` used to be on that list. It now reads real relationships, so
-> **a credential created before this release does not include it** — the allowed
-> skills are written into each credential when it is issued. Create a new one to
-> pick it up.
+The allowed skills are read when each mandate is issued, not when the credential
+is created, so an existing credential picks up a newly enabled skill within one
+mandate lifetime (15 minutes at most).
 
 ## Examples
 
@@ -289,8 +295,8 @@ Logs go to **stderr**, prefixed `[datacore-mcp]`. stdout is the JSON-RPC channel
 | `401` on everything | The credential was revoked, or is **past 90 days**, or `DATACORE_A2A_URL` is not the endpoint that issued it. On `DATACORE_MANDATE`: the mandate expired and **is not refreshed**. One message covers all of them on purpose, so the endpoint cannot be used to probe for valid keys. To tell them apart, call `GET /mcp/credentials` and see whether yours is still `ACTIVE` |
 | `409` calling `/mandate/issue` by hand | You put the key in `Authorization`. It belongs in `X-Datacore-Credential`. The package gets this right; you only hit it calling by hand |
 | `409` creating a credential | You already hold 3 active ones. Revoke one first |
-| `429` on a tool call | The account's 1,000 calls for the rolling 30-day window are used up. No reset date: the oldest call frees up 30 days after it was made |
-| `429` calling `/mandate/issue` | More than 10 mandate exchanges in a minute for one credential. The package refreshes about four times an hour, so this means something is looping |
+| `429` (getting a mandate) | More than 10 mandate exchanges in a minute for one credential. The package refreshes about four times an hour, so this means something is looping |
+| `429` `QUOTA_EXCEEDED` | The account's 1,000 requests in the last 30 days are used — across every key and Claude Connect. The error says when the next one comes back; `Retry-After` gives it in seconds |
 | `403` | The skill is outside the credential's allowlist — the free tier covers only the four skills above, and that set cannot be widened |
 | `400` | Malformed request, or the skill id is not registered at the endpoint |
 | `404` | No such route — check `DATACORE_A2A_URL` |
